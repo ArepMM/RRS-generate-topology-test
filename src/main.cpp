@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "tinyxml2.h"
 #include "trajectory_struct.h"
 
 //------------------------------------------------------------------------------
@@ -79,6 +80,56 @@ void write_traj(std::ofstream& traj_file_stream, const trajectory_t& traj)
 //------------------------------------------------------------------------------
 //
 //------------------------------------------------------------------------------
+void write_switch(tinyxml2::XMLPrinter& topology_file_printer, const switch_t& sw)
+{
+    constexpr const char* SWITCH_NODE = "Switch";
+    constexpr const char* NAME_NODE = "Name";
+    constexpr const char* BWD_PLUS = "bwdPlusTraj";
+    constexpr const char* BWD_MINUS = "bwdMinusTraj";
+    constexpr const char* FWD_PLUS = "fwdPlusTraj";
+    constexpr const char* FWD_MINUS = "fwdMinusTraj";
+    constexpr const char* BWD_PLUS_R = "bwdPlusTrajReversed";
+    constexpr const char* BWD_MINUS_R = "bwdMinusTrajReversed";
+    constexpr const char* FWD_PLUS_R = "fwdPlusTrajReversed";
+    constexpr const char* FWD_MINUS_R = "fwdMinusTrajReversed";
+
+    topology_file_printer.OpenElement(SWITCH_NODE);
+    if (!sw.name.empty())
+    {
+        topology_file_printer.OpenElement(NAME_NODE);
+        topology_file_printer.PushText(sw.name.c_str());
+        topology_file_printer.CloseElement();
+    }
+    if (!sw.name_bwd_plus.empty())
+    {
+        topology_file_printer.OpenElement(BWD_PLUS);
+        topology_file_printer.PushText(sw.name_bwd_plus.c_str());
+        topology_file_printer.CloseElement();
+    }
+    if (!sw.name_bwd_minus.empty())
+    {
+        topology_file_printer.OpenElement(BWD_MINUS);
+        topology_file_printer.PushText(sw.name_bwd_minus.c_str());
+        topology_file_printer.CloseElement();
+    }
+    if (!sw.name_fwd_plus.empty())
+    {
+        topology_file_printer.OpenElement(FWD_PLUS);
+        topology_file_printer.PushText(sw.name_fwd_plus.c_str());
+        topology_file_printer.CloseElement();
+    }
+    if (!sw.name_fwd_minus.empty())
+    {
+        topology_file_printer.OpenElement(FWD_MINUS);
+        topology_file_printer.PushText(sw.name_fwd_minus.c_str());
+        topology_file_printer.CloseElement();
+    }
+    topology_file_printer.CloseElement();
+}
+
+//------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
     {
@@ -123,52 +174,79 @@ int main(int argc, char* argv[])
     std::ofstream map_file_stream(map_file, std::ios::out);
     map_file_stream << std::fixed << std::setprecision(6);
 
-    // Файл test1.traj с траекторией для топологии путей
-    trajectory_t traj;
-    traj.name = "test1.traj";
-    std::filesystem::path traj_file = trajectories_dir / traj.name;
-    std::cout << traj_file << std::endl;
-    std::ofstream traj_file_stream(traj_file, std::ios::out);
-    traj_file_stream << std::fixed << std::setprecision(6);
+    // Файл topology.xml с соединениями траекторий
+    std::filesystem::path topology_file = topology_dir / "topology.xml";
+    std::FILE* topology_std_file = std::fopen(topology_file.string().c_str(), "w");
+    tinyxml2::XMLPrinter topology_file_printer = tinyxml2::XMLPrinter(topology_std_file);
+    topology_file_printer.PushHeader(true, true);
+    topology_file_printer.OpenElement("Config");
 
+    const dvec3 route_shift = {0.0, 100.0, 0.0};
+    const dvec3 models_shift = {0.0, 0.0, -0.3114};
+    const dvec3 attitude = {0.0, 0.0, 0.0};
     dvec3 begin = {0.0, 0.0, 0.0};
-    dvec3 route_shift = {0.0, 100.0, 0.0};
-    dvec3 models_shift = {0.0, 0.0, -0.3114};
-    dvec3 attitude = {0.0, 0.0, 0.0};
     double len = length(route_shift);
     double railway_coord = 0.0;
     double trajectory_coord = 0.0;
+    std::string prev_traj_name = "";
+    const std::string traj_name_prefix = "test_";
+    const std::string traj_extension = ".traj";
 
-    point_t point;
-    point.point = begin;
-    point.railway_coord = 0;
-    point.trajectory_coord = 0;
-    traj.points = {point};
-
-    for (size_t i = 0; i < 4; ++i)
+    for (size_t j = 0; j < 4; ++j)
     {
-        // Модель однопутной траектории
-        map_object_position_t obj;
-        obj.obj_name = "1track";
-        obj.position = begin + models_shift;
-        obj.attitude = attitude;
-        obj.obj_info = "";
+        // Файл test_XXX.traj с траекторией для топологии путей
+        trajectory_t traj;
+        traj.name = traj_name_prefix + std::to_string(j);
+        std::filesystem::path traj_file = trajectories_dir / (traj.name + traj_extension);
+        std::cout << traj_file << std::endl;
+        std::ofstream traj_file_stream(traj_file, std::ios::out);
+        traj_file_stream << std::fixed << std::setprecision(6);
 
-        write_map(map_file_stream, obj);
-
-        begin = begin + route_shift;
-        railway_coord = railway_coord + len;
-        trajectory_coord = trajectory_coord + len;
-
-        // Однопутная траектория
+        point_t point;
         point.point = begin;
         point.railway_coord = railway_coord;
         point.trajectory_coord = trajectory_coord;
-        traj.points.push_back(point);
+        traj.points = {point};
+
+        for (size_t i = 0; i < 4; ++i)
+        {
+            // Модель однопутной траектории
+            map_object_position_t obj;
+            obj.obj_name = "1track";
+            obj.position = begin + models_shift;
+            obj.attitude = attitude;
+            obj.obj_info = "";
+
+            write_map(map_file_stream, obj);
+
+            begin = begin + route_shift;
+            railway_coord = railway_coord + len;
+            trajectory_coord = trajectory_coord + len;
+
+            // Однопутная траектория
+            point.point = begin;
+            point.railway_coord = railway_coord;
+            point.trajectory_coord = trajectory_coord;
+            traj.points.push_back(point);
+        }
+
+        write_traj(traj_file_stream, traj);
+        traj_file_stream.close();
+
+
+        if (j)
+        {
+            switch_t sw;
+            sw.name = std::to_string(j);
+            sw.name_bwd_plus = prev_traj_name;
+            sw.name_fwd_plus = traj.name;
+            write_switch(topology_file_printer, sw);
+        }
+        prev_traj_name = traj.name;
     }
 
-    write_traj(traj_file_stream, traj);
-    traj_file_stream.close();
+    topology_file_printer.CloseElement();
+    std::fclose(topology_std_file);
 
     map_file_stream.close();
     return 0;

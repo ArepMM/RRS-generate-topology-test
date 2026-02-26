@@ -27,6 +27,24 @@ struct trajectory_t
 //------------------------------------------------------------------------------
 //
 //------------------------------------------------------------------------------
+struct switch_t
+{
+    std::string name = "";
+    std::string name_bwd_plus = "";
+    std::string name_bwd_minus = "";
+    std::string name_fwd_plus = "";
+    std::string name_fwd_minus = "";
+    bool reversed_bwd_plus = false;
+    bool reversed_bwd_minus = false;
+    bool reversed_fwd_plus = false;
+    bool reversed_fwd_minus = false;
+    bool bwd_to_minus = false;
+    bool fwd_to_minus = false;
+};
+
+//------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------
 struct map_object_position_t
 {
     std::string obj_name = "";
