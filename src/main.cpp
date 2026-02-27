@@ -92,6 +92,8 @@ void write_switch(tinyxml2::XMLPrinter& topology_file_printer, const switch_t& s
     constexpr const char* BWD_MINUS_R = "bwdMinusTrajReversed";
     constexpr const char* FWD_PLUS_R = "fwdPlusTrajReversed";
     constexpr const char* FWD_MINUS_R = "fwdMinusTrajReversed";
+    constexpr const char* BWD_STATE = "state_bwd";
+    constexpr const char* FWD_STATE = "state_fwd";
 
     topology_file_printer.OpenElement(SWITCH_NODE);
     if (!sw.name.empty())
@@ -102,26 +104,74 @@ void write_switch(tinyxml2::XMLPrinter& topology_file_printer, const switch_t& s
     }
     if (!sw.name_bwd_plus.empty())
     {
-        topology_file_printer.OpenElement(BWD_PLUS);
-        topology_file_printer.PushText(sw.name_bwd_plus.c_str());
-        topology_file_printer.CloseElement();
+        if (sw.reversed_bwd_plus)
+        {
+            topology_file_printer.OpenElement(BWD_PLUS_R);
+            topology_file_printer.PushText(sw.name_bwd_plus.c_str());
+            topology_file_printer.CloseElement();
+        }
+        else
+        {
+            topology_file_printer.OpenElement(BWD_PLUS);
+            topology_file_printer.PushText(sw.name_bwd_plus.c_str());
+            topology_file_printer.CloseElement();
+        }
     }
     if (!sw.name_bwd_minus.empty())
     {
-        topology_file_printer.OpenElement(BWD_MINUS);
-        topology_file_printer.PushText(sw.name_bwd_minus.c_str());
-        topology_file_printer.CloseElement();
+        if (sw.reversed_bwd_minus)
+        {
+            topology_file_printer.OpenElement(BWD_MINUS_R);
+            topology_file_printer.PushText(sw.name_bwd_minus.c_str());
+            topology_file_printer.CloseElement();
+        }
+        else
+        {
+            topology_file_printer.OpenElement(BWD_MINUS);
+            topology_file_printer.PushText(sw.name_bwd_minus.c_str());
+            topology_file_printer.CloseElement();
+        }
     }
     if (!sw.name_fwd_plus.empty())
     {
-        topology_file_printer.OpenElement(FWD_PLUS);
-        topology_file_printer.PushText(sw.name_fwd_plus.c_str());
-        topology_file_printer.CloseElement();
+        if (sw.reversed_fwd_plus)
+        {
+            topology_file_printer.OpenElement(FWD_PLUS_R);
+            topology_file_printer.PushText(sw.name_fwd_plus.c_str());
+            topology_file_printer.CloseElement();
+        }
+        else
+        {
+            topology_file_printer.OpenElement(FWD_PLUS);
+            topology_file_printer.PushText(sw.name_fwd_plus.c_str());
+            topology_file_printer.CloseElement();
+        }
     }
     if (!sw.name_fwd_minus.empty())
     {
-        topology_file_printer.OpenElement(FWD_MINUS);
-        topology_file_printer.PushText(sw.name_fwd_minus.c_str());
+        if (sw.reversed_fwd_minus)
+        {
+            topology_file_printer.OpenElement(FWD_MINUS_R);
+            topology_file_printer.PushText(sw.name_fwd_minus.c_str());
+            topology_file_printer.CloseElement();
+        }
+        else
+        {
+            topology_file_printer.OpenElement(FWD_MINUS);
+            topology_file_printer.PushText(sw.name_fwd_minus.c_str());
+            topology_file_printer.CloseElement();
+        }
+    }
+    if (sw.bwd_to_minus)
+    {
+        topology_file_printer.OpenElement(BWD_STATE);
+        topology_file_printer.PushText("-1");
+        topology_file_printer.CloseElement();
+    }
+    if (sw.fwd_to_minus)
+    {
+        topology_file_printer.OpenElement(FWD_STATE);
+        topology_file_printer.PushText("-1");
         topology_file_printer.CloseElement();
     }
     topology_file_printer.CloseElement();
@@ -233,11 +283,14 @@ int main(int argc, char* argv[])
         write_traj(traj_file_stream, traj);
         traj_file_stream.close();
 
-
         if (j)
         {
             switch_t sw;
             sw.name = std::to_string(j);
+            while(sw.name.size() < 4)
+            {
+                sw.name = "0" + sw.name;
+            }
             sw.name_bwd_plus = prev_traj_name;
             sw.name_fwd_plus = traj.name;
             write_switch(topology_file_printer, sw);
