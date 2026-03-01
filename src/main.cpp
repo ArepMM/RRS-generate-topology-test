@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <algorithm>
 
 #include "tinyxml2.h"
 #include "trajectory_struct.h"
@@ -310,11 +311,13 @@ int main(int argc, char* argv[])
     const dvec3 attitude = {0.0, 0.0, 0.0};
     dvec3 begin = {0.0, 0.0, 0.0};
     double railway_coord = 0.0;
-    std::string prev_main_traj_name = "";
-    std::string prev_side_traj_name = "";
     const std::string traj_main_name_prefix = "test_main_";
     const std::string traj_side_name_prefix = "test_side_";
     const std::string traj_extension = ".traj";
+    std::string prev_main_traj_name = "";
+    std::string prev_side_traj_name = "";
+    bool prev_main_reversed = false;
+    bool prev_side_reversed = false;
     bool is_2_tracks = false;
 
     next_trajectory_param_t ntp = next_trajectory_param_t();
@@ -417,11 +420,18 @@ int main(int argc, char* argv[])
         sw.name = idx_name;
         sw.name_bwd_plus = prev_main_traj_name;
         sw.name_bwd_minus = prev_side_traj_name;
+        sw.reversed_bwd_plus = prev_main_reversed;
+        sw.reversed_bwd_minus = prev_side_reversed;
 
         {
             // Файл test_main_XXX.traj с траекторией для топологии путей
             traj_main.name = traj_main_name_prefix + idx_name;
             sw.name_fwd_plus = traj_main.name;
+            sw.reversed_fwd_plus = traj_main.reversed;
+            if (traj_main.reversed)
+            {
+                std::reverse(traj_main.points.begin(), traj_main.points.end());
+            }
 
             std::filesystem::path traj_file = trajectories_dir / (traj_main.name + traj_extension);
             std::cout << traj_file << std::endl;
@@ -437,6 +447,11 @@ int main(int argc, char* argv[])
             // Файл test_side_XXX.traj с траекторией для топологии путей
             traj_side.name = traj_side_name_prefix + idx_name;
             sw.name_fwd_minus = traj_side.name;
+            sw.reversed_fwd_minus = traj_side.reversed;
+            if (traj_side.reversed)
+            {
+                std::reverse(traj_side.points.begin(), traj_side.points.end());
+            }
 
             std::filesystem::path traj_file = trajectories_dir / (traj_side.name + traj_extension);
             std::cout << traj_file << std::endl;
@@ -449,6 +464,7 @@ int main(int argc, char* argv[])
         else
         {
             sw.name_fwd_minus = "";
+            sw.reversed_fwd_minus = false;
         }
 
         if (j)
@@ -457,6 +473,8 @@ int main(int argc, char* argv[])
         }
         prev_main_traj_name = sw.name_fwd_plus;
         prev_side_traj_name = sw.name_fwd_minus;
+        prev_main_reversed = sw.reversed_fwd_plus;
+        prev_side_reversed = sw.reversed_fwd_minus;
         is_2_tracks = !is_2_tracks;
     }
 
