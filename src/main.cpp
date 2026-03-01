@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <random>
 
 #include "tinyxml2.h"
 #include "trajectory_struct.h"
@@ -66,13 +67,18 @@ void write_traj(std::ofstream& traj_file_stream, const trajectory_t& traj)
     constexpr char DELIMITER_SYMBOL = '\t';
     constexpr char NEW_LINE_SYMBOL = '\n';
 
+    dvec3 prev_point = traj.points.front().point;
+    double trajectory_coord = 0.0;
     for (auto point = traj.points.begin(); point != traj.points.end(); ++point)
     {
+        trajectory_coord += length(point->point - prev_point);
+        prev_point = point->point;
+
         traj_file_stream                     << point->point.x
                          << DELIMITER_SYMBOL << point->point.y
                          << DELIMITER_SYMBOL << point->point.z
                          << DELIMITER_SYMBOL << static_cast<int>(round(point->railway_coord))
-                         << DELIMITER_SYMBOL << point->trajectory_coord
+                         << DELIMITER_SYMBOL << trajectory_coord
                          << NEW_LINE_SYMBOL;
     }
 }
@@ -180,6 +186,56 @@ void write_switch(tinyxml2::XMLPrinter& topology_file_printer, const switch_t& s
 //------------------------------------------------------------------------------
 //
 //------------------------------------------------------------------------------
+struct next_trajectory_param_t
+{
+    bool change_num_track = false;
+    bool reverse_main_track = false;
+    bool reverse_side_track = false;
+    bool reverse_switch = false;
+
+    next_trajectory_param_t()
+    {
+        init();
+    }
+
+    void update()
+    {
+        int tmp;
+        tmp = distribution_change_num_track(generator);
+        std::cout << "changenum " << tmp;
+        change_num_track = (tmp == 0);
+        tmp = distribution_reverse_main_track(generator);
+        std::cout << " reversemain " << tmp;
+        reverse_main_track = (tmp == 0);
+        tmp = distribution_reverse_side_track(generator);
+        std::cout << " reverseside " << tmp;
+        reverse_side_track = (tmp == 0);
+        tmp = distribution_reverse_switch(generator);
+        std::cout << " reverseswitch " << tmp << std::endl;
+        reverse_switch = (tmp == 0);
+    }
+
+private:
+
+    std::minstd_rand generator;
+    std::uniform_int_distribution<> distribution_change_num_track;
+    std::uniform_int_distribution<> distribution_reverse_main_track;
+    std::uniform_int_distribution<> distribution_reverse_side_track;
+    std::uniform_int_distribution<> distribution_reverse_switch;
+
+    void init()
+    {
+        generator = std::minstd_rand();
+        distribution_change_num_track = std::uniform_int_distribution<>(0, 6);
+        distribution_reverse_main_track = std::uniform_int_distribution<>(0, 3);
+        distribution_reverse_side_track = std::uniform_int_distribution<>(0, 3);
+        distribution_reverse_switch = std::uniform_int_distribution<>(0, 8);
+    }
+};
+
+//------------------------------------------------------------------------------
+//
+//------------------------------------------------------------------------------
 int main(int argc, char* argv[])
 {
     {
@@ -192,6 +248,21 @@ int main(int argc, char* argv[])
         std::cout << command_line << std::endl;
     }
 
+    size_t switches = 30;
+    if (argc > 1)
+    {
+        std::string parameter = argv[1];
+        int switches_from_args = std::stoi(parameter);
+        if (switches_from_args > 0)
+        {
+            switches = std::min(switches_from_args, 65535);
+        }
+    }
+    if (!(switches % 2))
+    {
+        ++switches;
+    }
+
     // Структура папок маршрута
     std::filesystem::path cur_dir = std::filesystem::current_path();
     std::filesystem::path routes_dir = cur_dir / "routes";
@@ -200,6 +271,9 @@ int main(int argc, char* argv[])
     std::filesystem::path trajectories_dir = topology_dir / "trajectories";
     std::filesystem::path map_dir = topology_dir / "map";
     std::filesystem::path models_dir = test_route_dir / "models";
+
+    // Очищаем предыдущую версию маршрута, создаём папки под новую
+    std::filesystem::remove_all(topology_dir);
     std::filesystem::create_directories(trajectories_dir);
     std::filesystem::create_directories(map_dir);
     std::filesystem::create_directories(models_dir);
@@ -231,71 +305,159 @@ int main(int argc, char* argv[])
     topology_file_printer.PushHeader(true, true);
     topology_file_printer.OpenElement("Config");
 
-    const dvec3 route_shift = {0.0, 100.0, 0.0};
+    const dvec3 route_shift = {0.0, LEN, 0.0};
     const dvec3 models_shift = {0.0, 0.0, -0.3114};
     const dvec3 attitude = {0.0, 0.0, 0.0};
     dvec3 begin = {0.0, 0.0, 0.0};
-    double len = length(route_shift);
     double railway_coord = 0.0;
-    double trajectory_coord = 0.0;
-    std::string prev_traj_name = "";
-    const std::string traj_name_prefix = "test_";
+    std::string prev_main_traj_name = "";
+    std::string prev_side_traj_name = "";
+    const std::string traj_main_name_prefix = "test_main_";
+    const std::string traj_side_name_prefix = "test_side_";
     const std::string traj_extension = ".traj";
+    bool is_2_tracks = false;
 
-    for (size_t j = 0; j < 4; ++j)
+    next_trajectory_param_t ntp = next_trajectory_param_t();
+
+    for (size_t j = 0; j < switches; ++j)
     {
-        // Файл test_XXX.traj с траекторией для топологии путей
-        trajectory_t traj;
-        traj.name = traj_name_prefix + std::to_string(j);
-        std::filesystem::path traj_file = trajectories_dir / (traj.name + traj_extension);
-        std::cout << traj_file << std::endl;
-        std::ofstream traj_file_stream(traj_file, std::ios::out);
-        traj_file_stream << std::fixed << std::setprecision(6);
+        std::string idx_name = std::to_string(j);
+        while(idx_name.size() < 5)
+        {
+            idx_name = "0" + idx_name;
+        }
 
+        size_t num_track = 1;
+        do
+        {
+            ntp.update();
+            ++num_track;
+        }
+        while((!(ntp.change_num_track)) && (num_track < 10));
+
+        // Модель стрелки или однопутного участка
+        map_object_position_t obj;
+        obj.obj_name = (is_2_tracks) ? "1track1+2" : "1track";
+        obj.position = begin + models_shift;
+        obj.attitude = attitude;
+        obj.obj_info = "";
+        write_map(map_file_stream, obj);
+
+        // Первые точки траекторий
         point_t point;
         point.point = begin;
         point.railway_coord = railway_coord;
-        point.trajectory_coord = trajectory_coord;
-        traj.points = {point};
 
-        for (size_t i = 0; i < 4; ++i)
+        trajectory_t traj_main;
+        traj_main.reversed = ntp.reverse_main_track;
+        traj_main.points = {point};
+
+        trajectory_t traj_side;
+        traj_side.reversed = ntp.reverse_side_track;
+        traj_side.points = {point};
+        for (size_t i = 0; i < NUM_BIAS_POINTS; ++i)
         {
-            // Модель однопутной траектории
-            map_object_position_t obj;
-            obj.obj_name = "1track";
-            obj.position = begin + models_shift;
-            obj.attitude = attitude;
-            obj.obj_info = "";
-
-            write_map(map_file_stream, obj);
-
-            begin = begin + route_shift;
-            railway_coord = railway_coord + len;
-            trajectory_coord = trajectory_coord + len;
-
-            // Однопутная траектория
-            point.point = begin;
-            point.railway_coord = railway_coord;
-            point.trajectory_coord = trajectory_coord;
-            traj.points.push_back(point);
+            point.point.x = begin.x + BIAS[i];
+            point.point.y = begin.y + COORD[i];
+            point.point.z = begin.z;
+            point.railway_coord = railway_coord + COORD[i];
+            traj_side.points.push_back(point);
         }
 
-        write_traj(traj_file_stream, traj);
-        traj_file_stream.close();
+        for (size_t i = 0; i < (num_track - 1); ++i)
+        {
+            if (i > 0)
+            {
+                // Модель двухпутного или однопутного участка
+                obj.obj_name = (is_2_tracks) ? "2track" : "1track";
+                obj.position = begin + models_shift;
+                obj.attitude = attitude;
+                obj.obj_info = "";
+                write_map(map_file_stream, obj);
+            }
+
+            begin = begin + route_shift;
+            railway_coord = railway_coord + LEN;
+
+            // Промежуточные точки траекторий
+            point.point = begin;
+            point.railway_coord = railway_coord;
+            traj_main.points.push_back(point);
+
+            point.point.x = point.point.x + SIDE_BIAS;
+            traj_side.points.push_back(point);
+        }
+
+        // Модель стрелки или однопутного участка
+        obj.obj_name = (is_2_tracks) ? "1track2+1" : "1track";
+        obj.position = begin + models_shift;
+        obj.attitude = attitude;
+        obj.obj_info = "";
+        write_map(map_file_stream, obj);
+
+        for (size_t i = 0; i < NUM_BIAS_POINTS; ++i)
+        {
+            point_t bias_point;
+            point.point.x = begin.x + BIAS[NUM_BIAS_POINTS - i - 1];
+            point.point.y = begin.y + COORD[i];
+            point.point.z = begin.z;
+            point.railway_coord = railway_coord + COORD[i];
+            traj_side.points.push_back(point);
+        }
+
+        begin = begin + route_shift;
+        railway_coord = railway_coord + LEN;
+        point.point = begin;
+        point.railway_coord = railway_coord;
+        traj_main.points.push_back(point);
+        traj_side.points.push_back(point);
+
+        // Стрелка в топологии
+        switch_t sw;
+        sw.name = idx_name;
+        sw.name_bwd_plus = prev_main_traj_name;
+        sw.name_bwd_minus = prev_side_traj_name;
+
+        {
+            // Файл test_main_XXX.traj с траекторией для топологии путей
+            traj_main.name = traj_main_name_prefix + idx_name;
+            sw.name_fwd_plus = traj_main.name;
+
+            std::filesystem::path traj_file = trajectories_dir / (traj_main.name + traj_extension);
+            std::cout << traj_file << std::endl;
+            std::ofstream traj_file_stream(traj_file, std::ios::out);
+            traj_file_stream << std::fixed << std::setprecision(6);
+
+            write_traj(traj_file_stream, traj_main);
+            traj_file_stream.close();
+        }
+
+        if (is_2_tracks)
+        {
+            // Файл test_side_XXX.traj с траекторией для топологии путей
+            traj_side.name = traj_side_name_prefix + idx_name;
+            sw.name_fwd_minus = traj_side.name;
+
+            std::filesystem::path traj_file = trajectories_dir / (traj_side.name + traj_extension);
+            std::cout << traj_file << std::endl;
+            std::ofstream traj_file_stream(traj_file, std::ios::out);
+            traj_file_stream << std::fixed << std::setprecision(6);
+
+            write_traj(traj_file_stream, traj_side);
+            traj_file_stream.close();
+        }
+        else
+        {
+            sw.name_fwd_minus = "";
+        }
 
         if (j)
         {
-            switch_t sw;
-            sw.name = std::to_string(j);
-            while(sw.name.size() < 4)
-            {
-                sw.name = "0" + sw.name;
-            }
-            sw.name_bwd_plus = prev_traj_name;
-            sw.name_fwd_plus = traj.name;
             write_switch(topology_file_printer, sw);
         }
-        prev_traj_name = traj.name;
+        prev_main_traj_name = sw.name_fwd_plus;
+        prev_side_traj_name = sw.name_fwd_minus;
+        is_2_tracks = !is_2_tracks;
     }
 
     topology_file_printer.CloseElement();
