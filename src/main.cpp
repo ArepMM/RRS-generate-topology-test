@@ -418,16 +418,34 @@ int main(int argc, char* argv[])
         // Стрелка в топологии
         switch_t sw;
         sw.name = idx_name;
-        sw.name_bwd_plus = prev_main_traj_name;
-        sw.name_bwd_minus = prev_side_traj_name;
-        sw.reversed_bwd_plus = prev_main_reversed;
-        sw.reversed_bwd_minus = prev_side_reversed;
+        if (ntp.reverse_switch)
+        {
+            sw.name_fwd_plus = prev_main_traj_name;
+            sw.name_fwd_minus = prev_side_traj_name;
+            sw.reversed_fwd_plus = !prev_main_reversed;
+            sw.reversed_fwd_minus = !prev_side_reversed;
+        }
+        else
+        {
+            sw.name_bwd_plus = prev_main_traj_name;
+            sw.name_bwd_minus = prev_side_traj_name;
+            sw.reversed_bwd_plus = prev_main_reversed;
+            sw.reversed_bwd_minus = prev_side_reversed;
+        }
 
         {
             // Файл test_main_XXX.traj с траекторией для топологии путей
             traj_main.name = traj_main_name_prefix + idx_name;
-            sw.name_fwd_plus = traj_main.name;
-            sw.reversed_fwd_plus = traj_main.reversed;
+            if (ntp.reverse_switch)
+            {
+                sw.name_bwd_plus = traj_main.name;
+                sw.reversed_bwd_plus = !traj_main.reversed;
+            }
+            else
+            {
+                sw.name_fwd_plus = traj_main.name;
+                sw.reversed_fwd_plus = traj_main.reversed;
+            }
             if (traj_main.reversed)
             {
                 std::reverse(traj_main.points.begin(), traj_main.points.end());
@@ -446,8 +464,16 @@ int main(int argc, char* argv[])
         {
             // Файл test_side_XXX.traj с траекторией для топологии путей
             traj_side.name = traj_side_name_prefix + idx_name;
-            sw.name_fwd_minus = traj_side.name;
-            sw.reversed_fwd_minus = traj_side.reversed;
+            if (ntp.reverse_switch)
+            {
+                sw.name_bwd_minus = traj_side.name;
+                sw.reversed_bwd_minus = !traj_side.reversed;
+            }
+            else
+            {
+                sw.name_fwd_minus = traj_side.name;
+                sw.reversed_fwd_minus = traj_side.reversed;
+            }
             if (traj_side.reversed)
             {
                 std::reverse(traj_side.points.begin(), traj_side.points.end());
@@ -463,18 +489,26 @@ int main(int argc, char* argv[])
         }
         else
         {
-            sw.name_fwd_minus = "";
-            sw.reversed_fwd_minus = false;
+            if (ntp.reverse_switch)
+            {
+                sw.name_bwd_minus = "";
+                sw.reversed_bwd_minus = true;
+            }
+            else
+            {
+                sw.name_fwd_minus = "";
+                sw.reversed_fwd_minus = false;
+            }
         }
 
         if (j)
         {
             write_switch(topology_file_printer, sw);
         }
-        prev_main_traj_name = sw.name_fwd_plus;
-        prev_side_traj_name = sw.name_fwd_minus;
-        prev_main_reversed = sw.reversed_fwd_plus;
-        prev_side_reversed = sw.reversed_fwd_minus;
+        prev_main_traj_name = traj_main.name;
+        prev_side_traj_name = traj_side.name;
+        prev_main_reversed = traj_main.reversed;
+        prev_side_reversed = traj_side.reversed;
         is_2_tracks = !is_2_tracks;
     }
 
