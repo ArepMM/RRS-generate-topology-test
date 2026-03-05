@@ -330,19 +330,67 @@ int main(int argc, char* argv[])
     std::filesystem::create_directories(map_dir);
     std::filesystem::create_directories(models_dir);
 
+    // Описание
+    {
+        std::filesystem::path description_file = test_route_dir / "description.xml";
+        std::cout << description_file << std::endl;
+        std::FILE* description_std_file = std::fopen(description_file.string().c_str(), "w");
+        tinyxml2::XMLPrinter description_file_printer = tinyxml2::XMLPrinter(description_std_file);
+        description_file_printer.PushHeader(true, true);
+        description_file_printer.OpenElement("Config");
+        description_file_printer.OpenElement("Route");
+
+        description_file_printer.OpenElement("Title");
+        description_file_printer.PushText("Topology test route");
+        description_file_printer.CloseElement();
+        description_file_printer.OpenElement("Description");
+        description_file_printer.PushText("Topology test route");
+        description_file_printer.CloseElement();
+
+        description_file_printer.CloseElement();
+        description_file_printer.CloseElement();
+        std::fclose(description_std_file);
+    }
+
+    // Пути к моделям светофоров
+    {
+        std::filesystem::path models_config_file = topology_dir / "models-config.xml";
+        std::cout << models_config_file << std::endl;
+        std::FILE* models_config_std_file = std::fopen(models_config_file.string().c_str(), "w");
+        tinyxml2::XMLPrinter models_config_file_printer = tinyxml2::XMLPrinter(models_config_std_file);
+        models_config_file_printer.PushHeader(true, true);
+        models_config_file_printer.OpenElement("Config");
+        models_config_file_printer.OpenElement("Models");
+
+        models_config_file_printer.OpenElement("SignalModelsDir");
+        models_config_file_printer.PushText("default-objects");
+        models_config_file_printer.CloseElement();
+        models_config_file_printer.OpenElement("SignalAnimationsDir");
+        models_config_file_printer.PushText("default-objects");
+        models_config_file_printer.CloseElement();
+
+        models_config_file_printer.CloseElement();
+        models_config_file_printer.CloseElement();
+        std::fclose(models_config_std_file);
+    }
+
     // Модели путей
-    std::filesystem::path repository_data = cur_dir.parent_path() / "RRS-generate-topology-test" / "data";
-    copy_files(repository_data, models_dir);
+    {
+        std::filesystem::path repository_data = cur_dir.parent_path() / "RRS-generate-topology-test" / "data";
+        copy_files(repository_data, models_dir);
+    }
 
     // Файл objects.ref со ссылками на модели путей
-    std::filesystem::path ref_file = test_route_dir / "objects.ref";
-    std::cout << ref_file << std::endl;
-    std::ofstream ref_file_stream(ref_file, std::ios::out);
-    write_ref(ref_file_stream, "1track");
-    write_ref(ref_file_stream, "1track1+2");
-    write_ref(ref_file_stream, "1track2+1");
-    write_ref(ref_file_stream, "2track");
-    ref_file_stream.close();
+    {
+        std::filesystem::path ref_file = test_route_dir / "objects.ref";
+        std::cout << ref_file << std::endl;
+        std::ofstream ref_file_stream(ref_file, std::ios::out);
+        write_ref(ref_file_stream, "1track");
+        write_ref(ref_file_stream, "1track1+2");
+        write_ref(ref_file_stream, "1track2+1");
+        write_ref(ref_file_stream, "2track");
+        ref_file_stream.close();
+    }
 
     // Файл route1.map с положениями объектов
     std::filesystem::path map_file = map_dir / "route1.map";
