@@ -3,6 +3,7 @@
 #include <iostream>
 #include <random>
 #include <algorithm>
+#include <ctime>
 
 #include "tinyxml2.h"
 #include "trajectory_struct.h"
@@ -236,9 +237,9 @@ struct next_trajectory_param_t
     bool signal_bwd = false;
     int speed_limit = 100;
 
-    next_trajectory_param_t()
+    next_trajectory_param_t(int seed)
     {
-        init();
+        init(seed);
     }
 
     void update()
@@ -262,7 +263,7 @@ struct next_trajectory_param_t
         tmp = distribution_signal_bwd(generator);
         std::cout << " signalbwd " << tmp;
         signal_bwd = (tmp == 0);
-        speed_limit = 5 * distribution_speed_limit(generator);
+        speed_limit = 20 * distribution_speed_limit(generator);
         std::cout << " speedlimit " << speed_limit << std::endl;
     }
 
@@ -277,16 +278,17 @@ private:
     std::uniform_int_distribution<> distribution_signal_bwd;
     std::uniform_int_distribution<> distribution_speed_limit;
 
-    void init()
+    void init(int seed)
     {
         generator = std::minstd_rand();
+        generator.seed(seed);
         distribution_change_num_track = std::uniform_int_distribution<>(0, 6);
         distribution_reverse_main_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_side_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_switch = std::uniform_int_distribution<>(0, 8);
         distribution_signal_fwd = std::uniform_int_distribution<>(0, 1);
         distribution_signal_bwd = std::uniform_int_distribution<>(0, 1);
-        distribution_speed_limit = std::uniform_int_distribution<>(15, 24);//75,120
+        distribution_speed_limit = std::uniform_int_distribution<>(4, 6);//80,100,120
     }
 };
 
@@ -305,19 +307,26 @@ int main(int argc, char* argv[])
         std::cout << command_line << std::endl;
     }
 
-    size_t switches = 30;
+    size_t switches = 50;
+    int seed = 0;
     if (argc > 1)
     {
         std::string parameter = argv[1];
-        int switches_from_args = std::stoi(parameter);
-        if (switches_from_args > 0)
+        int seed_from_args = std::stoi(parameter);
+        if (seed_from_args > 0)
         {
-            switches = std::min(switches_from_args, 65535);
+            seed = seed_from_args;
         }
     }
-    if (!(switches % 2))
+    if (seed)
     {
-        ++switches;
+        std::cout << "Seed = " << seed << std::endl;
+    }
+    else
+    {
+        const std::time_t system_timestamp = std::time(nullptr);
+        seed = system_timestamp;
+        std::cout << "Seed: timestamp = " << seed << std::endl;
     }
 
     // Структура папок маршрута
@@ -457,7 +466,7 @@ int main(int argc, char* argv[])
     std::vector<int> speed_limit = {100};
     std::vector<double> coord_speed_limit = {railway_coord};
 
-    next_trajectory_param_t ntp = next_trajectory_param_t();
+    next_trajectory_param_t ntp = next_trajectory_param_t(seed);
 
     for (size_t j = 0; j < switches; ++j)
     {
