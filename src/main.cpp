@@ -234,6 +234,7 @@ struct next_trajectory_param_t
     bool reverse_switch = false;
     bool signal_fwd = false;
     bool signal_bwd = false;
+    int speed_limit = 100;
 
     next_trajectory_param_t()
     {
@@ -259,8 +260,10 @@ struct next_trajectory_param_t
         std::cout << " signalfwd " << tmp;
         signal_fwd = (tmp == 0);
         tmp = distribution_signal_bwd(generator);
-        std::cout << " signalbwd " << tmp << std::endl;
+        std::cout << " signalbwd " << tmp;
         signal_bwd = (tmp == 0);
+        speed_limit = 5 * distribution_speed_limit(generator);
+        std::cout << " speedlimit " << speed_limit << std::endl;
     }
 
 private:
@@ -272,6 +275,7 @@ private:
     std::uniform_int_distribution<> distribution_reverse_switch;
     std::uniform_int_distribution<> distribution_signal_fwd;
     std::uniform_int_distribution<> distribution_signal_bwd;
+    std::uniform_int_distribution<> distribution_speed_limit;
 
     void init()
     {
@@ -282,6 +286,7 @@ private:
         distribution_reverse_switch = std::uniform_int_distribution<>(0, 8);
         distribution_signal_fwd = std::uniform_int_distribution<>(0, 1);
         distribution_signal_bwd = std::uniform_int_distribution<>(0, 1);
+        distribution_speed_limit = std::uniform_int_distribution<>(15, 24);//75,120
     }
 };
 
@@ -323,12 +328,16 @@ int main(int argc, char* argv[])
     std::filesystem::path trajectories_dir = topology_dir / "trajectories";
     std::filesystem::path map_dir = topology_dir / "map";
     std::filesystem::path models_dir = test_route_dir / "models";
+    std::filesystem::path speedmap_dir = topology_dir / "trajectory-speedmap";
+    std::filesystem::path ALSN_dir = topology_dir / "trajectory-ALSN";
 
     // Очищаем предыдущую версию маршрута, создаём папки под новую
     std::filesystem::remove_all(topology_dir);
     std::filesystem::create_directories(trajectories_dir);
     std::filesystem::create_directories(map_dir);
     std::filesystem::create_directories(models_dir);
+    std::filesystem::create_directories(speedmap_dir);
+    std::filesystem::create_directories(ALSN_dir);
 
     // Описание
     {
@@ -405,6 +414,33 @@ int main(int argc, char* argv[])
     topology_file_printer.PushHeader(true, true);
     topology_file_printer.OpenElement("Config");
 
+    // Файлы speedmap с ограничениями скорости
+    std::filesystem::path speedmap_main_file = speedmap_dir / "speedmap_main.xml";
+    std::FILE* speedmap_main_std_file = std::fopen(speedmap_main_file.string().c_str(), "w");
+    tinyxml2::XMLPrinter speedmap_main_file_printer = tinyxml2::XMLPrinter(speedmap_main_std_file);
+    speedmap_main_file_printer.PushHeader(true, true);
+    speedmap_main_file_printer.OpenElement("Config");
+
+    std::filesystem::path speedmap_side_file = speedmap_dir / "speedmap_side.xml";
+    std::FILE* speedmap_side_std_file = std::fopen(speedmap_side_file.string().c_str(), "w");
+    tinyxml2::XMLPrinter speedmap_side_file_printer = tinyxml2::XMLPrinter(speedmap_side_std_file);
+    speedmap_side_file_printer.PushHeader(true, true);
+    speedmap_side_file_printer.OpenElement("Config");
+
+    // Файлы ALSN с частотами передачи кода АЛСН в рельсовую цепь
+    std::filesystem::path ALSN_main_file = ALSN_dir / "ALSN_main.xml";
+    std::FILE* ALSN_main_std_file = std::fopen(ALSN_main_file.string().c_str(), "w");
+    tinyxml2::XMLPrinter ALSN_main_file_printer = tinyxml2::XMLPrinter(ALSN_main_std_file);
+    ALSN_main_file_printer.PushHeader(true, true);
+    ALSN_main_file_printer.OpenElement("Config");
+
+    std::filesystem::path ALSN_side_file = ALSN_dir / "ALSN_side.xml";
+    std::FILE* ALSN_side_std_file = std::fopen(ALSN_side_file.string().c_str(), "w");
+    tinyxml2::XMLPrinter ALSN_side_file_printer = tinyxml2::XMLPrinter(ALSN_side_std_file);
+    ALSN_side_file_printer.PushHeader(true, true);
+    ALSN_side_file_printer.OpenElement("Config");
+
+
     const dvec3 route_shift = {0.0, LEN, 0.0};
     const dvec3 models_shift = {0.0, 0.0, -0.3114};
     const dvec3 attitude = {0.0, 0.0, 0.0};
@@ -418,6 +454,8 @@ int main(int argc, char* argv[])
     bool prev_main_reversed = false;
     bool prev_side_reversed = false;
     bool is_2_tracks = false;
+    std::vector<int> speed_limit = {100};
+    std::vector<double> coord_speed_limit = {railway_coord};
 
     next_trajectory_param_t ntp = next_trajectory_param_t();
 
@@ -433,6 +471,11 @@ int main(int argc, char* argv[])
         do
         {
             ntp.update();
+            if (ntp.speed_limit != speed_limit.back())
+            {
+                speed_limit.push_back(ntp.speed_limit);
+                coord_speed_limit.push_back(railway_coord + LEN * num_track);
+            }
             ++num_track;
         }
         while((!(ntp.change_num_track)) && (num_track < 10));
@@ -560,6 +603,18 @@ int main(int argc, char* argv[])
                 std::reverse(traj_main.points.begin(), traj_main.points.end());
             }
 
+            speedmap_main_file_printer.OpenElement("Trajectory");
+            speedmap_main_file_printer.OpenElement("Name");
+            speedmap_main_file_printer.PushText(traj_main.name.c_str());
+            speedmap_main_file_printer.CloseElement();
+            speedmap_main_file_printer.CloseElement();
+
+            ALSN_main_file_printer.OpenElement("Trajectory");
+            ALSN_main_file_printer.OpenElement("Name");
+            ALSN_main_file_printer.PushText(traj_main.name.c_str());
+            ALSN_main_file_printer.CloseElement();
+            ALSN_main_file_printer.CloseElement();
+
             std::filesystem::path traj_file = trajectories_dir / (traj_main.name + traj_extension);
             std::cout << traj_file << std::endl;
             std::ofstream traj_file_stream(traj_file, std::ios::out);
@@ -587,6 +642,18 @@ int main(int argc, char* argv[])
             {
                 std::reverse(traj_side.points.begin(), traj_side.points.end());
             }
+
+            speedmap_side_file_printer.OpenElement("Trajectory");
+            speedmap_side_file_printer.OpenElement("Name");
+            speedmap_side_file_printer.PushText(traj_side.name.c_str());
+            speedmap_side_file_printer.CloseElement();
+            speedmap_side_file_printer.CloseElement();
+
+            ALSN_side_file_printer.OpenElement("Trajectory");
+            ALSN_side_file_printer.OpenElement("Name");
+            ALSN_side_file_printer.PushText(traj_side.name.c_str());
+            ALSN_side_file_printer.CloseElement();
+            ALSN_side_file_printer.CloseElement();
 
             std::filesystem::path traj_file = trajectories_dir / (traj_side.name + traj_extension);
             std::cout << traj_file << std::endl;
@@ -622,6 +689,54 @@ int main(int argc, char* argv[])
         prev_side_reversed = traj_side.reversed;
         is_2_tracks = !is_2_tracks;
     }
+
+    coord_speed_limit.push_back(railway_coord);
+    for (size_t i = 0; i < speed_limit.size(); ++i)
+    {
+        std::string limit = std::to_string(speed_limit[i])
+                    + " " + std::to_string(coord_speed_limit[i])
+                    + " " + std::to_string(coord_speed_limit[i+1]);
+        speedmap_main_file_printer.OpenElement("SpeedMap");
+        speedmap_main_file_printer.OpenElement("SpeedLimit");
+        speedmap_main_file_printer.PushText(limit.c_str());
+        speedmap_main_file_printer.CloseElement();
+        speedmap_main_file_printer.CloseElement();
+    }
+
+    speedmap_main_file_printer.CloseElement();
+    std::fclose(speedmap_main_std_file);
+
+    std::string limit = std::to_string(40)
+                + " " + std::to_string(coord_speed_limit.front())
+                + " " + std::to_string(coord_speed_limit.back());
+    speedmap_side_file_printer.OpenElement("SpeedMap");
+    speedmap_side_file_printer.OpenElement("SpeedLimit");
+    speedmap_side_file_printer.PushText(limit.c_str());
+    speedmap_side_file_printer.CloseElement();
+    speedmap_side_file_printer.CloseElement();
+
+    speedmap_side_file_printer.CloseElement();
+    std::fclose(speedmap_side_std_file);
+
+    ALSN_main_file_printer.OpenElement("ALSN");
+    ALSN_main_file_printer.OpenElement("Frequency");
+    ALSN_main_file_printer.PushText("50");
+    ALSN_main_file_printer.CloseElement();
+    ALSN_main_file_printer.CloseElement();
+
+    ALSN_main_file_printer.CloseElement();
+    std::fclose(ALSN_main_std_file);
+
+    ALSN_side_file_printer.OpenElement("ALSN");
+    ALSN_side_file_printer.OpenElement("Frequency");
+    ALSN_side_file_printer.PushText("0");
+    ALSN_side_file_printer.CloseElement();
+    ALSN_side_file_printer.CloseElement();
+
+    ALSN_side_file_printer.CloseElement();
+    std::fclose(ALSN_side_std_file);
+
+
 
     topology_file_printer.CloseElement();
     std::fclose(topology_std_file);
