@@ -87,20 +87,35 @@ void write_traj(std::ofstream& traj_file_stream, const trajectory_t& traj)
 //------------------------------------------------------------------------------
 //
 //------------------------------------------------------------------------------
-void write_switch(tinyxml2::XMLPrinter& topology_file_printer, const switch_t& sw)
+void write_switch(tinyxml2::XMLPrinter& topology_file_printer, const switch_t& sw,
+                  const char* signal_bwd, const char* signal_fwd)
 {
     constexpr const char* SWITCH_NODE = "Switch";
     constexpr const char* NAME_NODE = "Name";
+
     constexpr const char* BWD_PLUS = "bwdPlusTraj";
     constexpr const char* BWD_MINUS = "bwdMinusTraj";
     constexpr const char* FWD_PLUS = "fwdPlusTraj";
     constexpr const char* FWD_MINUS = "fwdMinusTraj";
+
     constexpr const char* BWD_PLUS_R = "bwdPlusTrajReversed";
     constexpr const char* BWD_MINUS_R = "bwdMinusTrajReversed";
     constexpr const char* FWD_PLUS_R = "fwdPlusTrajReversed";
     constexpr const char* FWD_MINUS_R = "fwdMinusTrajReversed";
+
     constexpr const char* BWD_STATE = "state_bwd";
     constexpr const char* FWD_STATE = "state_fwd";
+
+    constexpr const char* SIG_LITER_BWD = "SignalLiterBwd";
+    constexpr const char* SIG_MODEL_BWD = "SignalModelBwd";
+    constexpr const char* SIG_POS_BWD = "RelPosVectorBwd";
+
+    constexpr const char* SIG_LITER_FWD = "SignalLiterFwd";
+    constexpr const char* SIG_MODEL_FWD = "SignalModelFwd";
+    constexpr const char* SIG_POS_FWD = "RelPosVectorFwd";
+
+    constexpr const char* SIG_MODEL_VALUE = "ab_rout";
+    constexpr const char* SIG_POS_VALUE = "2.5 -2.75 0.0";
 
     topology_file_printer.OpenElement(SWITCH_NODE);
     if (!sw.name.empty())
@@ -181,6 +196,30 @@ void write_switch(tinyxml2::XMLPrinter& topology_file_printer, const switch_t& s
         topology_file_printer.PushText("-1");
         topology_file_printer.CloseElement();
     }
+    if (signal_bwd)
+    {
+        topology_file_printer.OpenElement(SIG_LITER_BWD);
+        topology_file_printer.PushText(signal_bwd);
+        topology_file_printer.CloseElement();
+        topology_file_printer.OpenElement(SIG_MODEL_BWD);
+        topology_file_printer.PushText(SIG_MODEL_VALUE);
+        topology_file_printer.CloseElement();
+        topology_file_printer.OpenElement(SIG_POS_BWD);
+        topology_file_printer.PushText(SIG_POS_VALUE);
+        topology_file_printer.CloseElement();
+    }
+    if (signal_fwd)
+    {
+        topology_file_printer.OpenElement(SIG_LITER_FWD);
+        topology_file_printer.PushText(signal_fwd);
+        topology_file_printer.CloseElement();
+        topology_file_printer.OpenElement(SIG_MODEL_FWD);
+        topology_file_printer.PushText(SIG_MODEL_VALUE);
+        topology_file_printer.CloseElement();
+        topology_file_printer.OpenElement(SIG_POS_FWD);
+        topology_file_printer.PushText(SIG_POS_VALUE);
+        topology_file_printer.CloseElement();
+    }
     topology_file_printer.CloseElement();
 }
 
@@ -193,6 +232,8 @@ struct next_trajectory_param_t
     bool reverse_main_track = false;
     bool reverse_side_track = false;
     bool reverse_switch = false;
+    bool signal_fwd = false;
+    bool signal_bwd = false;
 
     next_trajectory_param_t()
     {
@@ -212,8 +253,14 @@ struct next_trajectory_param_t
         std::cout << " reverseside " << tmp;
         reverse_side_track = (tmp == 0);
         tmp = distribution_reverse_switch(generator);
-        std::cout << " reverseswitch " << tmp << std::endl;
+        std::cout << " reverseswitch " << tmp;
         reverse_switch = (tmp == 0);
+        tmp = distribution_signal_fwd(generator);
+        std::cout << " signalfwd " << tmp;
+        signal_fwd = (tmp == 0);
+        tmp = distribution_signal_bwd(generator);
+        std::cout << " signalbwd " << tmp << std::endl;
+        signal_bwd = (tmp == 0);
     }
 
 private:
@@ -223,6 +270,8 @@ private:
     std::uniform_int_distribution<> distribution_reverse_main_track;
     std::uniform_int_distribution<> distribution_reverse_side_track;
     std::uniform_int_distribution<> distribution_reverse_switch;
+    std::uniform_int_distribution<> distribution_signal_fwd;
+    std::uniform_int_distribution<> distribution_signal_bwd;
 
     void init()
     {
@@ -231,6 +280,8 @@ private:
         distribution_reverse_main_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_side_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_switch = std::uniform_int_distribution<>(0, 8);
+        distribution_signal_fwd = std::uniform_int_distribution<>(0, 1);
+        distribution_signal_bwd = std::uniform_int_distribution<>(0, 1);
     }
 };
 
@@ -358,6 +409,7 @@ int main(int argc, char* argv[])
         trajectory_t traj_side;
         traj_side.reversed = ntp.reverse_side_track;
         traj_side.points = {point};
+        // Точки траектории съезда на боковой путь
         for (size_t i = 0; i < NUM_BIAS_POINTS; ++i)
         {
             point.point.x = begin.x + BIAS[i];
@@ -367,17 +419,24 @@ int main(int argc, char* argv[])
             traj_side.points.push_back(point);
         }
 
-        for (size_t i = 0; i < (num_track - 1); ++i)
+        begin = begin + route_shift;
+        railway_coord = railway_coord + LEN;
+
+        point.point = begin;
+        point.railway_coord = railway_coord;
+        traj_main.points.push_back(point);
+
+        point.point.x = point.point.x + SIDE_BIAS;
+        traj_side.points.push_back(point);
+
+        for (size_t i = 1; i < (num_track - 1); ++i)
         {
-            if (i > 0)
-            {
-                // Модель двухпутного или однопутного участка
-                obj.obj_name = (is_2_tracks) ? "2track" : "1track";
-                obj.position = begin + models_shift;
-                obj.attitude = attitude;
-                obj.obj_info = "";
-                write_map(map_file_stream, obj);
-            }
+            // Модель двухпутного или однопутного участка
+            obj.obj_name = (is_2_tracks) ? "2track" : "1track";
+            obj.position = begin + models_shift;
+            obj.attitude = attitude;
+            obj.obj_info = "";
+            write_map(map_file_stream, obj);
 
             begin = begin + route_shift;
             railway_coord = railway_coord + LEN;
@@ -398,18 +457,20 @@ int main(int argc, char* argv[])
         obj.obj_info = "";
         write_map(map_file_stream, obj);
 
-        for (size_t i = 0; i < NUM_BIAS_POINTS; ++i)
+        begin = begin + route_shift;
+        railway_coord = railway_coord + LEN;
+
+        // Точки траектории съезда с бокового пути
+        for (size_t i = NUM_BIAS_POINTS; i > 0; --i)
         {
             point_t bias_point;
-            point.point.x = begin.x + BIAS[NUM_BIAS_POINTS - i - 1];
-            point.point.y = begin.y + COORD[i];
+            point.point.x = begin.x + BIAS[i - 1];
+            point.point.y = begin.y - COORD[i - 1];
             point.point.z = begin.z;
-            point.railway_coord = railway_coord + COORD[i];
+            point.railway_coord = railway_coord - COORD[i - 1];
             traj_side.points.push_back(point);
         }
 
-        begin = begin + route_shift;
-        railway_coord = railway_coord + LEN;
         point.point = begin;
         point.railway_coord = railway_coord;
         traj_main.points.push_back(point);
@@ -503,7 +564,9 @@ int main(int argc, char* argv[])
 
         if (j)
         {
-            write_switch(topology_file_printer, sw);
+            const char* liter_bwd = ntp.signal_bwd ? idx_name.c_str() : nullptr;
+            const char* liter_fwd = ntp.signal_fwd ? idx_name.c_str() : nullptr;
+            write_switch(topology_file_printer, sw, liter_bwd, liter_fwd);
         }
         prev_main_traj_name = traj_main.name;
         prev_side_traj_name = traj_side.name;
