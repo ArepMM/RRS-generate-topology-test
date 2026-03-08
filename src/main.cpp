@@ -282,7 +282,7 @@ private:
     {
         generator = std::minstd_rand();
         generator.seed(seed);
-        distribution_change_num_track = std::uniform_int_distribution<>(0, 6);
+        distribution_change_num_track = std::uniform_int_distribution<>(0, 4);
         distribution_reverse_main_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_side_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_switch = std::uniform_int_distribution<>(0, 8);
@@ -487,7 +487,7 @@ int main(int argc, char* argv[])
             }
             ++num_track;
         }
-        while((!(ntp.change_num_track)) && (num_track < 10));
+        while((!(ntp.change_num_track)) && (num_track < 8));
 
         // Модель стрелки или однопутного участка
         map_object_position_t obj;
@@ -688,8 +688,20 @@ int main(int argc, char* argv[])
 
         if (j)
         {
-            const char* liter_bwd = ntp.signal_bwd ? idx_name.c_str() : nullptr;
-            const char* liter_fwd = ntp.signal_fwd ? idx_name.c_str() : nullptr;
+            std::string signal_liter_fwd = idx_name;
+            std::string signal_liter_bwd = idx_name;
+            if (ntp.reverse_switch)
+            {
+                signal_liter_bwd = "Н" + signal_liter_bwd;
+                signal_liter_fwd = "Ч" + signal_liter_fwd;
+            }
+            else
+            {
+                signal_liter_bwd = "Ч" + signal_liter_bwd;
+                signal_liter_fwd = "Н" + signal_liter_fwd;
+            }
+            const char* liter_bwd = ntp.signal_bwd ? signal_liter_bwd.c_str() : nullptr;
+            const char* liter_fwd = ntp.signal_fwd ? signal_liter_fwd.c_str() : nullptr;
             write_switch(topology_file_printer, sw, liter_bwd, liter_fwd);
         }
         prev_main_traj_name = traj_main.name;
