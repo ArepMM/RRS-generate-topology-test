@@ -233,6 +233,7 @@ struct next_trajectory_param_t
     bool reverse_main_track = false;
     bool reverse_side_track = false;
     bool reverse_switch = false;
+    bool side_switch = false;
     bool signal_fwd = false;
     bool signal_bwd = false;
     int speed_limit = 100;
@@ -257,6 +258,9 @@ struct next_trajectory_param_t
         tmp = distribution_reverse_switch(generator);
         std::cout << " reverseswitch " << tmp;
         reverse_switch = (tmp == 0);
+        tmp = distribution_side_switch(generator);
+        std::cout << " sideswitch " << tmp;
+        side_switch = (tmp == 0);
         tmp = distribution_signal_fwd(generator);
         std::cout << " signalfwd " << tmp;
         signal_fwd = (tmp == 0);
@@ -274,6 +278,7 @@ private:
     std::uniform_int_distribution<> distribution_reverse_main_track;
     std::uniform_int_distribution<> distribution_reverse_side_track;
     std::uniform_int_distribution<> distribution_reverse_switch;
+    std::uniform_int_distribution<> distribution_side_switch;
     std::uniform_int_distribution<> distribution_signal_fwd;
     std::uniform_int_distribution<> distribution_signal_bwd;
     std::uniform_int_distribution<> distribution_speed_limit;
@@ -286,6 +291,7 @@ private:
         distribution_reverse_main_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_side_track = std::uniform_int_distribution<>(0, 3);
         distribution_reverse_switch = std::uniform_int_distribution<>(0, 8);
+        distribution_side_switch = std::uniform_int_distribution<>(0, 2);
         distribution_signal_fwd = std::uniform_int_distribution<>(0, 1);
         distribution_signal_bwd = std::uniform_int_distribution<>(0, 1);
         distribution_speed_limit = std::uniform_int_distribution<>(4, 6);//80,100,120
@@ -307,7 +313,7 @@ int main(int argc, char* argv[])
         std::cout << command_line << std::endl;
     }
 
-    size_t switches = 50;
+    size_t switches = 51;
     int seed = 0;
     if (argc > 1)
     {
@@ -585,6 +591,7 @@ int main(int argc, char* argv[])
             sw.name_fwd_minus = prev_side_traj_name;
             sw.reversed_fwd_plus = !prev_main_reversed;
             sw.reversed_fwd_minus = !prev_side_reversed;
+            sw.fwd_to_minus = (!prev_side_traj_name.empty()) && ntp.side_switch;
         }
         else
         {
@@ -592,6 +599,7 @@ int main(int argc, char* argv[])
             sw.name_bwd_minus = prev_side_traj_name;
             sw.reversed_bwd_plus = prev_main_reversed;
             sw.reversed_bwd_minus = prev_side_reversed;
+            sw.bwd_to_minus = (!prev_side_traj_name.empty()) && ntp.side_switch;
         }
 
         {
@@ -641,11 +649,13 @@ int main(int argc, char* argv[])
             {
                 sw.name_bwd_minus = traj_side.name;
                 sw.reversed_bwd_minus = !traj_side.reversed;
+                sw.bwd_to_minus = ntp.side_switch;
             }
             else
             {
                 sw.name_fwd_minus = traj_side.name;
                 sw.reversed_fwd_minus = traj_side.reversed;
+                sw.fwd_to_minus = ntp.side_switch;
             }
             if (traj_side.reversed)
             {
